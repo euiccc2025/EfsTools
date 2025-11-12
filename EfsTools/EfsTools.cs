@@ -6,6 +6,7 @@ using System.Net;
 using System.Reflection;
 using System.Text;
 using System.Threading;
+using EfsTools.CommandLineOptions;
 using EfsTools.Items;
 using EfsTools.Mbn;
 using EfsTools.Qualcomm;
@@ -362,6 +363,139 @@ namespace EfsTools
                     var path = PathUtils.FixUnixPath(efsPath);
                     FileUtils.PhoneFixFileNames(manager, path, _logger);
                 }
+            }
+        }
+
+        public void ReadNvItem(ushort itemId, string computerPath, NvItemFormat format)
+        {
+            using (var manager = OpenQcdmManager())
+            {
+                var data = manager.Nv.Read(itemId);
+                if (data == null || data.Length == 0)
+                {
+                    _logger.LogInfo($"NV item {itemId} could not be read or is empty.");
+                    return;
+                }
+
+                if (string.IsNullOrEmpty(computerPath))
+                {
+                    var outputFormat = format;
+                    if (format == NvItemFormat.Raw)
+                    {
+                        _logger.LogWarning("Raw format cannot be written to the console. Defaulting to Hex.");
+                        outputFormat = NvItemFormat.Hex;
+                    }
+
+                    string output;
+                    switch (outputFormat)
+                    {
+                        case NvItemFormat.Hex:
+                            output = BitConverter.ToString(data).Replace("-", " ");
+                            break;
+                        case NvItemFormat.Dec:
+                            output = string.Join(" ", data.Select(b => b.ToString()));
+                            break;
+                        default:
+                            throw new InvalidOperationException("Unsupported format for console output.");
+                    }
+                    _logger.LogInfo($"NV item {itemId} [{outputFormat}]:");
+                    _logger.LogInfo(output);
+                }
+                else
+                {
+                    switch (format)
+                    {
+                        case NvItemFormat.Raw:
+                            File.WriteAllBytes(computerPath, data);
+                            break;
+                        case NvItemFormat.Hex:
+                            File.WriteAllText(computerPath, BitConverter.ToString(data).Replace("-", " "));
+                            break;
+                        case NvItemFormat.Dec:
+                            File.WriteAllText(computerPath, string.Join(" ", data.Select(b => b.ToString())));
+                            break;
+                    }
+                    _logger.LogInfo($"NV item {itemId} was read and saved to '{computerPath}' in {format} format.");
+                }
+            }
+        }
+
+        public void WriteNvItem(ushort itemId, string computerPath, string payload, NvItemFormat format)
+        {
+            if (string.IsNullOrEmpty(computerPath) && string.IsNullOrEmpty(payload))
+            {
+                throw new ArgumentException("Either a file path or a payload must be provided.");
+            }
+
+            if (!string.IsNullOrEmpty(computerPath) && !string.IsNullOrEmpty(payload))
+            {
+                throw new ArgumentException("Both file path and payload cannot be provided simultaneously.");
+            }
+            
+            if (!string.IsNullOrEmpty(payload) && format == NvItemFormat.Raw)
+            {
+                throw new ArgumentException("Raw format is not supported for payload input. Please use Hex or Dec.");
+            }
+
+            byte[] dataToWrite;
+
+            try
+            {
+                if (!string.IsNullOrEmpty(payload))
+                {
+                    switch (format)
+                    {
+                        case NvItemFormat.Hex:
+                            dataToWrite = ParseUtils.ParseHexString(payload);
+                            break;
+                        case NvItemFormat.Dec:
+                            dataToWrite = ParseUtils.ParseDecString(payload);
+                            break;
+                        default: // Raw is already handled
+                            throw new InvalidOperationException("Unsupported format for payload input.");
+                    }
+                }
+                else
+                {
+                    if (!File.Exists(computerPath))
+                    {
+                        _logger.LogError($"File not found: {computerPath}");
+                        return;
+                    }
+
+                    switch (format)
+                    {
+                        case NvItemFormat.Raw:
+                            dataToWrite = File.ReadAllBytes(computerPath);
+                            break;
+                        case NvItemFormat.Hex:
+                        {
+                            var hexString = File.ReadAllText(computerPath);
+                            dataToWrite = ParseUtils.ParseHexString(hexString);
+                            break;
+                        }
+                        case NvItemFormat.Dec:
+                        {
+                            var decString = File.ReadAllText(computerPath);
+                            dataToWrite = ParseUtils.ParseDecString(decString);
+                            break;
+                        }
+                        default:
+                            throw new InvalidOperationException("Unsupported format for file input.");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Failed to parse input data: {ex.Message}");
+                return;
+            }
+            
+            using (var manager = OpenQcdmManager())
+            {
+                manager.Nv.Write(itemId, dataToWrite);
+                var source = string.IsNullOrEmpty(computerPath) ? "payload" : $"'{computerPath}'";
+                _logger.LogInfo($"NV item {itemId} was written from {source} using {format} format.");
             }
         }
 

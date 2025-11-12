@@ -44,6 +44,8 @@ namespace EfsTools
                         typeof(GetModemConfigOptions),
                         typeof(SetModemConfigOptions),
                         typeof(ExtractMbnOptions),
+                        typeof(ReadNvItemOptions),
+                        typeof(WriteNvItemOptions),
                         typeof(StartWebDavServerOptions),
                         typeof(GetLogsOptions)
                     );
@@ -78,6 +80,10 @@ namespace EfsTools
                         tools.ExtractMbn(opts.InputMbnFilePath, opts.OutputComputerDirectoryPath, opts.NoExtraData));
                     cmd.WithParsed<GetLogsOptions>(opts =>
                         tools.GetLog(opts.MessageMask, opts.LogMask, opts.Verbose));
+                    cmd.WithParsed<ReadNvItemOptions>(opts =>
+                        tools.ReadNvItem(opts.ItemId, opts.OutComputerFilePath, opts.Format));
+                    cmd.WithParsed<WriteNvItemOptions>(opts =>
+                        tools.WriteNvItem(opts.ItemId, opts.InComputerFilePath, opts.Payload, opts.Format));
                     cmd.WithParsed<StartWebDavServerOptions>(opts =>
                         tools.StartWebDavServer(opts.Port, opts.LogLevel, opts.ReadOnly != 0));
                     cmd.WithNotParsed(errors => { });
